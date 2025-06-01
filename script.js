@@ -56,6 +56,8 @@ document.addEventListener('DOMContentLoaded', () => {
     currentPlayerIndex: 0,
     roundCount: 0,
     isNormanPeriod: true, // Or other game phase flags
+    player1SelectedCards: [], // For tracking Player 1's selected cards (indices)
+    consecutivePasses: 0, // For tracking stalemate condition
     // Potentially other state: directionOfPlay, cardsToDraw, etc.
   };
 
@@ -72,6 +74,8 @@ document.addEventListener('DOMContentLoaded', () => {
     gameState.roundCount = 0;
     gameState.isNormanPeriod = true;
     gameState.isGameOver = false; // Initialize game over flag
+    gameState.consecutivePasses = 0; // Reset stalemate counter
+    clearPlayer1Selection(); // Clear selected cards
 
     // Hide restart button initially
     const restartButton = document.getElementById('restart-button');
@@ -161,19 +165,62 @@ document.addEventListener('DOMContentLoaded', () => {
 
     handElement.innerHTML = ''; // Clear existing cards
 
-    player.hand.forEach((card, index) => {
-      const cardDiv = document.createElement('div');
-      cardDiv.classList.add('card');
-      cardDiv.innerHTML = `<span class="rank">${getRankDisplay(card.rank)}</span><span class="suit">${card.suit}</span>`;
-      // Store card data more robustly for event handling
-      cardDiv.dataset.suit = card.suit;
-      cardDiv.dataset.rank = card.rank; // Store the actual rank value
-      cardDiv.dataset.playerId = player.id;
-      cardDiv.dataset.cardIndex = index; // Index in the current hand array
+    if (playerIndex === 0) { // Player 1 (Human)
+      player.hand.forEach((card, index) => {
+        const cardDiv = document.createElement('div');
+        cardDiv.classList.add('card');
+        cardDiv.innerHTML = `<span class="rank">${getRankDisplay(card.rank)}</span><span class="suit">${card.suit}</span>`;
+        // Store card data for event handling
+        cardDiv.dataset.suit = card.suit;
+        cardDiv.dataset.rank = card.rank;
+        cardDiv.dataset.playerId = player.id;
+        cardDiv.dataset.cardIndex = index; // Keep original index
 
-      // Example: cardDiv.addEventListener('click', handleCardPlay); // To be added later
-      handElement.appendChild(cardDiv);
-    });
+        // Add 'selected' class if the card is in player1SelectedCards
+        if (gameState.player1SelectedCards.includes(index)) {
+          cardDiv.classList.add('selected');
+        }
+
+        cardDiv.addEventListener('click', () => {
+          if (gameState.currentPlayerIndex !== 0) return; // Only P1 can interact
+
+          const clickedCardIndex = parseInt(cardDiv.dataset.cardIndex);
+          const selectedCards = gameState.player1SelectedCards;
+          const alreadySelectedArrayIndex = selectedCards.indexOf(clickedCardIndex);
+
+          if (alreadySelectedArrayIndex > -1) { // Card is already selected, so deselect it
+            selectedCards.splice(alreadySelectedArrayIndex, 1);
+            cardDiv.classList.remove('selected');
+          } else { // Card is not selected, try to select it
+            if (selectedCards.length < 2) {
+              selectedCards.push(clickedCardIndex);
+              cardDiv.classList.add('selected');
+              if (selectedCards.length === 2) {
+                // Immediately try to play if two cards are now selected
+                tryPlayPlayer1SelectedCards();
+              }
+            } else {
+              // 2 cards already selected, clicking a 3rd does nothing for now as per earlier decision.
+              // OR: clear existing, select this one.
+              // For now: do nothing if 2 selected and a 3rd is clicked.
+              // User must deselect one first.
+              updateGameMessage("You have 2 cards selected. Deselect one or play them.");
+            }
+          }
+          // Note: Re-rendering the hand here could be an alternative to manually toggling class,
+          // but direct class manipulation is fine for this.
+        });
+        handElement.appendChild(cardDiv);
+      });
+    } else { // CPU Players (playerIndex 1, 2, or 3)
+      player.hand.forEach(() => { // We don't need card details, just the count
+        const cardDiv = document.createElement('div');
+        cardDiv.classList.add('card', 'card-back');
+        cardDiv.textContent = '??'; // Placeholder for card back
+        // No event listeners for CPU cards
+        handElement.appendChild(cardDiv);
+      });
+    }
   }
 
   // 5. renderHands function
@@ -215,6 +262,47 @@ document.addEventListener('DOMContentLoaded', () => {
   // Call initGame() to start the game when the page loads
   initGame();
 
+  // Utility function to clear Player 1's card selection
+  function clearPlayer1Selection() {
+    // Clear the actual selection data
+    gameState.player1SelectedCards = [];
+    // Remove 'selected' class from all of Player 1's cards
+    const player1HandElement = document.getElementById('player-1-hand');
+    if (player1HandElement) {
+      player1HandElement.querySelectorAll('.card.selected').forEach(cardDiv => {
+        cardDiv.classList.remove('selected');
+      });
+    }
+  }
+
+  // Event listener for Draw Button
+  const drawButton = document.getElementById('draw-button');
+  if (drawButton) {
+    drawButton.addEventListener('click', () => {
+      if (gameState.currentPlayerIndex === 0) { // Only Player 1 (human) can draw
+        drawCard(0);
+      } else {
+        console.log("Player 1 clicked draw, but it's not their turn.");
+        // Optionally, provide feedback to the user:
+        // updateGameMessage("It's not your turn to draw.");
+      }
+    });
+  } else {
+    console.error("Draw button not found!");
+  }
+
+  // Event listener for Restart Button
+  const restartButtonElement = document.getElementById('restart-button');
+  if (restartButtonElement) {
+    restartButtonElement.addEventListener('click', () => {
+      console.log("Restart button clicked. Re-initializing game.");
+      initGame();
+      // initGame() already handles hiding the restart button.
+    });
+  } else {
+    console.error("Restart button element not found for attaching listener!");
+  }
+
   // 1. startTurn() function
   function startTurn() {
     highlightCurrentPlayer();
@@ -226,7 +314,27 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     updateGameMessage(`Player ${currentPlayer.id}'s turn. Cards in hand: ${currentPlayer.hand.length}. Pile: ${gameState.pile.length > 0 ? gameState.pile[gameState.pile.length -1].suit + getRankDisplay(gameState.pile[gameState.pile.length -1].rank) : 'Empty'}`);
     console.log(`Starting turn for Player ${currentPlayer.id}`);
-    // Potentially enable/disable UI elements for the current player here
+
+    // If it's a CPU player's turn (Player ID > 1, which means index > 0)
+    if (gameState.currentPlayerIndex > 0) {
+      // Player ID is index + 1. So CPU players are index 1, 2, 3.
+      updateGameMessage(`Player ${currentPlayer.id} is thinking...`);
+      // Disable Player 1's draw button during CPU turn (visual feedback)
+      if (drawButton) drawButton.disabled = true;
+      // Cards for player 1 are already not clickable if it's not their turn due to checks in playCard.
+
+      setTimeout(() => {
+        cpuTakeTurn(gameState.currentPlayerIndex);
+        // Re-enable draw button if it's now Player 1's turn again (or for next human turn)
+        // This check is important if cpuTakeTurn could somehow skip turns or game ends.
+        if (gameState.currentPlayerIndex === 0 && drawButton) {
+            drawButton.disabled = false;
+        }
+      }, 1500); // 1.5 second delay for CPU "thinking"
+    } else {
+      // It's Player 1's turn (human)
+      if (drawButton) drawButton.disabled = false;
+    }
   }
 
   // 2. checkNormanPeriodEnd() function
@@ -240,6 +348,100 @@ document.addEventListener('DOMContentLoaded', () => {
         updateGameMessage(document.getElementById('game-message').textContent + " Norman period has ended. Players can now 'Man'!");
         console.log("Norman period ended.");
       }
+    }
+  }
+
+  // New function to handle Player 1 playing 1 or 2 selected cards
+  function tryPlayPlayer1SelectedCards() {
+    if (gameState.currentPlayerIndex !== 0) return; // Should only be callable by Player 1
+
+    const selectedIndices = gameState.player1SelectedCards;
+    const player = gameState.players[0];
+
+    if (selectedIndices.length === 1) {
+      console.log("Attempting to play 1 selected card.");
+      playCard(0, selectedIndices[0]); // playCard will handle clearing selection
+    } else if (selectedIndices.length === 2) {
+      console.log("Attempting to play 2 selected cards.");
+      const card1Index = selectedIndices[0];
+      const card2Index = selectedIndices[1];
+      const card1 = player.hand[card1Index];
+      const card2 = player.hand[card2Index];
+
+      if (!card1 || !card2) {
+        console.error("One or both selected cards not found in hand.", card1Index, card2Index, player.hand);
+        updateGameMessage("Error with selection. Please try again.");
+        clearPlayer1Selection();
+        renderPlayerHand(0); // Re-render to fix UI
+        return;
+      }
+
+      const topPileCard = gameState.pile.length > 0 ? gameState.pile[gameState.pile.length - 1] : null;
+
+      // Validation:
+      // 1. Cards must have the same rank.
+      // 2. At least one card must be playable against the topPileCard.
+      const sameRank = card1.rank === card2.rank;
+      const card1Playable = !topPileCard || card1.suit === topPileCard.suit || card1.rank === topPileCard.rank;
+      const card2Playable = !topPileCard || card2.suit === topPileCard.suit || card2.rank === topPileCard.rank;
+
+      if (sameRank && (card1Playable || card2Playable)) {
+        let primaryCard, secondaryCard;
+        // Determine primary card (the one that makes the play valid and goes on the pile)
+        // If both are playable, convention might be needed. Let's prefer card1 if both match.
+        // Or, if one matches suit and other rank, suit match might be preferred by some rules.
+        // For now, simple: if card1 is playable, it's primary. Else, card2 must be.
+        if (card1Playable) {
+          primaryCard = card1;
+          secondaryCard = card2; // secondary is just for removal from hand
+        } else {
+          primaryCard = card2;
+          secondaryCard = card1;
+        }
+
+        console.log(`Player 1 playing two cards: ${getRankDisplay(card1.rank)}${card1.suit} and ${getRankDisplay(card2.rank)}${card2.suit}. Primary to pile: ${getRankDisplay(primaryCard.rank)}${primaryCard.suit}`);
+
+        // Remove both cards from hand. Sort indices descending to avoid issues with splice.
+        const indicesToRemove = [card1Index, card2Index].sort((a, b) => b - a);
+        indicesToRemove.forEach(index => player.hand.splice(index, 1));
+
+        gameState.pile.push(primaryCard); // Only primary card goes to pile
+        player.hasPlayedThisRound = true;
+        gameState.consecutivePasses = 0; // Successful two-card play resets passes
+
+        // Clear selection BEFORE re-rendering hand
+        clearPlayer1Selection();
+
+        renderPlayerHand(0); // Update P1 hand display
+        renderPile();       // Update pile display
+
+        updateGameMessage(`Player 1 played two ${getRankDisplay(primaryCard.rank)}s. Hand: ${player.hand.length}.`);
+
+        const isWin = checkWin(0); // Check win condition
+        if (isWin) {
+          updateGameMessage(`Player 1 MANNED with two cards! Round over.`);
+          console.log(`Win detected for player 1 after two-card play. Calling updateScores.`);
+          updateScores(0);
+          return; // Round ends
+        }
+
+        checkNormanPeriodEnd(); // Check if Norman period ends
+        endTurn(); // End Player 1's turn
+      } else {
+        // Invalid two-card play
+        let message = "Invalid two-card play.";
+        if (!sameRank) message += " Cards must be of the same rank.";
+        if (sameRank && !(card1Playable || card2Playable)) message += " Neither card is playable on the current pile.";
+        updateGameMessage(message);
+        console.log("Invalid two-card play:", {card1, card2, topPileCard, sameRank, card1Playable, card2Playable});
+        clearPlayer1Selection(); // Clear selection on invalid attempt
+        renderPlayerHand(0); // Re-render to remove 'selected' class
+      }
+    } else {
+      // Should not happen if called correctly (0 or >2 cards selected)
+      console.log("tryPlayPlayer1SelectedCards called with " + selectedIndices.length + " cards. Clearing selection.");
+      clearPlayer1Selection();
+      renderPlayerHand(0);
     }
   }
 
@@ -276,7 +478,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // Play Card
     player.hand.splice(cardHandIndex, 1);
     gameState.pile.push(cardToPlay);
-    player.hasPlayedThisRound = true; // Mark that player has made a move in Norman period
+    player.hasPlayedThisRound = true;
+    gameState.consecutivePasses = 0; // Successful play resets passes
+
+    if (playerIndex === 0) {
+      clearPlayer1Selection(); // Clear selection if P1 made the play
+    }
 
     renderPlayerHand(playerIndex);
     renderPile();
@@ -285,30 +492,21 @@ document.addEventListener('DOMContentLoaded', () => {
     // This needs to be before checkWin, as game rules might state win on last card played
     // then Norman period ending message might be confusing.
     // However, for now, let's keep it simple.
-    const messageBeforeNormanCheck = `Player ${player.id} played ${cardToPlay.suit}${getRankDisplay(cardToPlay.rank)}. Hand: ${player.hand.length}.`;
-    updateGameMessage(messageBeforeNormanCheck);
+    const messageAfterPlay = `Player ${player.id} played ${cardToPlay.suit}${getRankDisplay(cardToPlay.rank)}. Hand: ${player.hand.length}.`;
+    updateGameMessage(messageAfterPlay); // Initial message
 
-    checkNormanPeriodEnd(); // This might append to the message
-
-    // Win Check
+    // Win Check must happen BEFORE Norman period end for clarity, and before endTurn
     const isWin = checkWin(playerIndex);
     if (isWin) {
-        // updateScores will be called to handle score and next round/game end.
-        updateGameMessage(`Player ${player.id} MANNED! Round over.`);
-        console.log(`Win detected for player ${player.id}. Calling updateScores next.`);
-        updateScores(playerIndex); // This function will be implemented in the next step
-        // Do NOT call endTurn() here if it's a win, as the round ends.
-        return; // Important to return here to not call endTurn()
-    } else {
-        // If not a win, proceed to end turn as before.
-        // Message might have been updated by checkNormanPeriodEnd, so ensure this message is appropriate.
-        // The message set before checkNormanPeriodEnd might be overwritten if checkNormanPeriodEnd also updates.
-        // Let's ensure a clear message for the action.
-        // updateGameMessage(`Player ${player.id} played ${getRankDisplay(cardToPlay.rank)}${cardToPlay.suit}. Hand: ${player.hand.length}.`);
-        // The above line is similar to messageBeforeNormanCheck, which is fine.
-        // checkNormanPeriodEnd might append to it.
-        endTurn();
+        updateGameMessage(`Player ${player.id} MANNED! Round over.`); // Overwrite previous message
+        console.log(`Win detected for player ${player.id}. Calling updateScores.`);
+        updateScores(playerIndex);
+        return; // Round ends, do not proceed to checkNormanPeriodEnd or endTurn
     }
+
+    // If no win, then check Norman period and proceed to end turn
+    checkNormanPeriodEnd(); // This might append to the game message
+    endTurn();
   }
 
   // 4. drawCard(playerIndex) function
@@ -328,20 +526,44 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (gameState.deck.length === 0) {
-      updateGameMessage("Deck is empty. Cannot draw. Player " + player.id + " may try to play a card.");
-      // Potentially, if no playable cards, this could be a stalemate or specific game rule.
-      return; // Don't end turn, player might still play a card.
+      if (playerIndex === 0) { // Player 1 specific logic for empty deck
+        if (!playerHasPlayableCard(0)) {
+          gameState.consecutivePasses++;
+          updateGameMessage(`Player 1 has no playable cards and deck is empty. Passing. Consecutive passes: ${gameState.consecutivePasses}`);
+          console.log(`Player 1 passed (no playable cards, empty deck). Consecutive passes: ${gameState.consecutivePasses}`);
+          if (!checkStalemate()) {
+            endTurn();
+          }
+          // If stalemate, game ends.
+        } else {
+          updateGameMessage("Deck is empty. You have playable cards, Player 1!");
+        }
+      } else { // CPU (should be handled by cpuTakeTurn, but as a fallback)
+         updateGameMessage("Deck is empty. Player " + player.id + " cannot draw.");
+         // This path for CPU in drawCard directly usually means cpuTakeTurn decided to draw,
+         // but then found deck empty. The pass logic should be in cpuTakeTurn.
+         // However, to be safe, if a CPU somehow calls drawCard directly on empty deck:
+         // gameState.consecutivePasses++; // This might lead to double counting if cpuTakeTurn also did.
+         // updateGameMessage(`Player ${player.id} passes (cannot draw). Consecutive passes: ${gameState.consecutivePasses}`);
+         // if (!checkStalemate()) endTurn();
+         // For now, assume cpuTakeTurn handles its own passing.
+      }
+      return; // Don't proceed to draw
     }
 
     const drawnCard = gameState.deck.pop();
     player.hand.push(drawnCard);
-    player.hasPlayedThisRound = true; // Drawing a card counts as a move in Norman period
+    player.hasPlayedThisRound = true;
+    gameState.consecutivePasses = 0; // Successful draw resets passes
+
+    if (playerIndex === 0) {
+      clearPlayer1Selection();
+    }
 
     renderPlayerHand(playerIndex);
     updateGameMessage(`Player ${player.id} drew a card. Hand: ${player.hand.length}.`);
 
-    checkNormanPeriodEnd(); // Check if Norman period ends after drawing
-
+    checkNormanPeriodEnd();
     endTurn();
   }
 
@@ -374,7 +596,79 @@ document.addEventListener('DOMContentLoaded', () => {
             gameState.players.forEach(p => p.hasPlayedThisRound = false);
         }
     }
+    // If game is over (win or stalemate), do not start a new turn.
+    if (gameState.isGameOver) {
+        console.log("Game is over. endTurn() will not start a new turn.");
+        // UI should already be updated by checkWin/updateScores or checkStalemate
+        // to show restart button and appropriate messages.
+        return;
+    }
     startTurn();
+  }
+
+  // CPU Player Logic
+  function cpuTakeTurn(playerIndex) {
+    const player = gameState.players[playerIndex];
+    if (!player) {
+      console.error(`CPU player not found at index ${playerIndex}`);
+      endTurn(); // Should not happen, but end turn to prevent game stall
+      return;
+    }
+    console.log(`CPU Player ${player.id} (Index: ${playerIndex}) is taking its turn.`);
+
+    const topPileCard = gameState.pile.length > 0 ? gameState.pile[gameState.pile.length - 1] : null;
+
+    // Decision Logic: Find the first playable card
+    let bestCardIndex = -1;
+
+    for (let i = 0; i < player.hand.length; i++) {
+      const card = player.hand[i];
+      const isPlayable = !topPileCard || card.suit === topPileCard.suit || card.rank === topPileCard.rank;
+      if (isPlayable) {
+        bestCardIndex = i;
+        break; // Play the first valid card found
+      }
+    }
+
+    if (bestCardIndex !== -1) {
+      console.log(`CPU Player ${player.id} playing card at index ${bestCardIndex}: ${player.hand[bestCardIndex].suit}${getRankDisplay(player.hand[bestCardIndex].rank)}`);
+      playCard(playerIndex, bestCardIndex);
+    } else {
+      // No playable card, try to draw
+      if (gameState.deck.length > 0) {
+        console.log(`CPU Player ${player.id} has no playable cards, drawing a card.`);
+        drawCard(playerIndex); // drawCard will reset consecutivePasses if successful
+      } else {
+        // No playable card and deck is empty: CPU passes
+        console.log(`CPU Player ${player.id} has no playable cards and deck is empty. Passing turn.`);
+        gameState.consecutivePasses++;
+        updateGameMessage(`Player ${player.id} passes. Consecutive passes: ${gameState.consecutivePasses}`);
+        console.log(`CPU Player ${player.id} passed. Consecutive passes: ${gameState.consecutivePasses}`);
+        if (!checkStalemate()) {
+          endTurn();
+        }
+        // If checkStalemate() is true, game is over, endTurn() shouldn't proceed to next turn.
+        // endTurn() itself will be modified to check gameState.isGameOver.
+        // If stalemate, the game stops here for this CPU.
+      }
+    }
+  }
+
+  // Helper function to check if a player has any playable card
+  function playerHasPlayableCard(playerIndex) {
+    const player = gameState.players[playerIndex];
+    if (!player) return false;
+
+    const topPileCard = gameState.pile.length > 0 ? gameState.pile[gameState.pile.length - 1] : null;
+
+    if (!topPileCard) return true; // Any card is playable if pile is empty
+
+    for (const card of player.hand) {
+      if (card.suit === topPileCard.suit || card.rank === topPileCard.rank) {
+        return true; // Found a playable card
+      }
+    }
+    return false; // No playable card found
   }
 
   // 1. checkWin(playerIndex) function
@@ -465,6 +759,23 @@ document.addEventListener('DOMContentLoaded', () => {
       // console.log(`Player ${player.id} did not MAN. Hand sum: ${handSum}, Pile card rank: ${getRankDisplay(topPileCard.rank)} (${topPileCard.rank})`);
       return false;
     }
+  }
+
+  // Function to check for stalemate condition
+  function checkStalemate() {
+    if (gameState.consecutivePasses >= gameState.players.length) {
+      gameState.isGameOver = true; // Use existing flag to stop game progression
+      updateGameMessage("Stalemate! No player can make a move. This round is a draw. Click Restart.");
+      console.log("Stalemate detected. All players passed consecutively.");
+      const restartButton = document.getElementById('restart-button');
+      if (restartButton) {
+        restartButton.style.display = 'block';
+      } else {
+        console.warn("Restart button not found in checkStalemate.");
+      }
+      return true; // Stalemate detected
+    }
+    return false; // No stalemate
   }
 
   // Modify updateScores function
