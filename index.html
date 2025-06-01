@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Card Game</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="game-container">
+    <div id="scoreboard">
+      <div class="player-score" id="player-1-score"></div>
+      <div class="player-score" id="player-2-score"></div>
+      <div class="player-score" id="player-3-score"></div>
+      <div class="player-score" id="player-4-score"></div>
+    </div>
+    <div id="table-area">
+      <div id="pile-area">場札: <span id="top-card"></span></div>
+      <button id="draw-button">山札から引く</button>
+    </div>
+    <div id="hands-container">
+      <div class="player-hand" id="player-1-hand"></div>
+      <div class="player-hand" id="player-2-hand"></div>
+      <div class="player-hand" id="player-3-hand"></div>
+      <div class="player-hand" id="player-4-hand"></div>
+    </div>
+    <div id="message-area">
+      <p id="game-message"></p>
+    </div>
+    <button id="restart-button" style="display: none;">Restart Game</button>
+  </div>
+  <script src="script.js"></script>
+</body>
+</html>
