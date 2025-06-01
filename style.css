@@ -146,6 +146,11 @@ body {
   min-height: 40px;
 }
 
+.card.selected {
+  border: 3px solid blue;
+  box-shadow: 0 0 5px blue;
+}
+
 #game-message {
   margin: 0;
   color: #0056b3;
