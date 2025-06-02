@@ -4,6 +4,7 @@ console.log("script.js loaded");
 const WINNING_SCORE = 5; // Or any other score as per spec example
 
 document.addEventListener('DOMContentLoaded', () => {
+  window.debug_domContentLoadedFired = true; // ADDED: Verify DOMContentLoaded
   console.log("DOM fully loaded and parsed");
 
   // Define gameState directly on the window object
@@ -265,14 +266,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const drawButton = document.getElementById('draw-button');
   if (drawButton) {
+    window.debug_drawButtonFound = true; // ADDED: drawButton was found
     drawButton.addEventListener('click', () => {
+      console.log("Draw button clicked. Setting debug_eventListenerFired."); // Optional console log
+      window.debug_eventListenerFired = true; // From previous subtask, kept for full trace
       if (window.gameState.currentPlayerIndex === 0) {
+        console.log("Current player is 0. Setting debug_currentPlayerIndexInListener and preparing to call drawCard."); // Optional console log
+        window.debug_currentPlayerIndexInListener = window.gameState.currentPlayerIndex; // From previous subtask, kept
         drawCard(0);
       } else {
         console.log("Player 1 clicked draw, but it's not their turn.");
       }
     });
   } else {
+    window.debug_drawButtonFound = false; // ADDED: drawButton was NOT found
     console.error("Draw button not found!");
   }
 
@@ -449,6 +456,9 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function drawCard(playerIndex) {
+    console.log("drawCard function called. Setting debug_drawCardCalled."); // Optional console log
+    window.debug_drawCardCalled = true; // From previous subtask, kept for full trace
+
     const player = window.gameState.players[playerIndex];
     if (!player) {
         console.error("Player not found for index:", playerIndex);
@@ -461,7 +471,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (window.gameState.deck.length === 0) {
-      if (playerIndex === 0) {
+      if (playerIndex === 0) { // Player 1 specific logic for empty deck
         if (!playerHasPlayableCard(0)) {
           window.gameState.consecutivePasses++;
           updateGameMessage(`Player 1 has no playable cards and deck is empty. Passing. Consecutive passes: ${window.gameState.consecutivePasses}`);
@@ -469,18 +479,45 @@ document.addEventListener('DOMContentLoaded', () => {
           if (!checkStalemate()) {
             endTurn();
           }
+          // If stalemate, game ends.
         } else {
           updateGameMessage("Deck is empty. You have playable cards, Player 1!");
         }
-      } else {
+      } else { // CPU (should be handled by cpuTakeTurn, but as a fallback)
          updateGameMessage("Deck is empty. Player " + player.id + " cannot draw.");
       }
-      return;
+      return; // Don't proceed to draw
+    }
+
+    // For Playwright to potentially see if the test is adapted:
+    window.debug_deckLengthBeforePop = window.gameState.deck.length;
+    window.debug_handLengthBeforePush = window.gameState.players[playerIndex].hand.length;
+    window.debug_isHandArrayBeforePush = Array.isArray(window.gameState.players[playerIndex].hand);
+
+    if (!window.debug_isHandArrayBeforePush) {
+      // This is unexpected, log an error if possible, and re-initialize.
+      console.error(`CRITICAL: Player ${playerIndex}'s hand was not an array before push! Re-initializing.`);
+      window.gameState.players[playerIndex].hand = [];
     }
 
     const drawnCard = window.gameState.deck.pop();
-    window.gameState.players[playerIndex].hand.push(drawnCard); // Explicitly using window.gameState path
-    player.hasPlayedThisRound = true; // Drawing counts as playing for Norman period purposes
+    // Ensure drawnCard is not undefined (e.g. if deck became empty concurrently, though pop should handle)
+    if (!drawnCard) {
+        console.error("drawnCard is undefined after pop, deck might be unexpectedly empty or pop failed.");
+        // Potentially end turn or handle error, as push(undefined) would be bad.
+        // For now, just log and don't push.
+        updateGameMessage(`Player ${player.id} attempted to draw, but no card was retrieved.`);
+        // Not calling endTurn here as this is an exceptional state. May need more robust error handling.
+        return;
+    }
+    window.debug_drawnCard = JSON.parse(JSON.stringify(drawnCard)); // Store a copy of what was drawn
+    window.debug_deckLengthAfterPop = window.gameState.deck.length;
+
+    window.gameState.players[playerIndex].hand.push(drawnCard);
+    window.debug_handLengthAfterPush = window.gameState.players[playerIndex].hand.length;
+    // window.debug_handContentsAfterPush = JSON.parse(JSON.stringify(window.gameState.players[playerIndex].hand));
+
+    player.hasPlayedThisRound = true;
     window.gameState.consecutivePasses = 0;
 
     if (playerIndex === 0) {
