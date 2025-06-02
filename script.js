@@ -188,27 +188,54 @@ document.addEventListener('DOMContentLoaded', () => {
           const selectedCards = gameState.player1SelectedCards;
           const alreadySelectedArrayIndex = selectedCards.indexOf(clickedCardIndex);
 
-          if (alreadySelectedArrayIndex > -1) { // Card is already selected, so deselect it
-            selectedCards.splice(alreadySelectedArrayIndex, 1);
-            cardDiv.classList.remove('selected');
-          } else { // Card is not selected, try to select it
+          if (alreadySelectedArrayIndex > -1) {
+            // Card is already selected.
+            // If it's the *only* selected card, clicking it again means "play this card".
+            if (selectedCards.length === 1 && selectedCards[0] === clickedCardIndex) {
+              console.log("Player 1 attempting to play single selected card (by clicking it again).");
+              if (typeof window.tryPlayPlayer1SelectedCards === 'function') {
+                window.tryPlayPlayer1SelectedCards();
+              } else if (typeof tryPlayPlayer1SelectedCards === 'function') { // Fallback if not on window yet
+                tryPlayPlayer1SelectedCards();
+              } else {
+                console.error("tryPlayPlayer1SelectedCards function is not accessible.");
+                updateGameMessage("Error: Play function not found.");
+              }
+            } else {
+              // If multiple cards were selected, or a different selected card was clicked,
+              // treat this click as "deselect this specific card".
+              selectedCards.splice(alreadySelectedArrayIndex, 1);
+              cardDiv.classList.remove('selected');
+              console.log(`Card at index ${clickedCardIndex} deselected.`);
+            }
+          } else {
+            // Card is not currently selected.
             if (selectedCards.length < 2) {
               selectedCards.push(clickedCardIndex);
               cardDiv.classList.add('selected');
+              console.log(`Card at index ${clickedCardIndex} selected. Total selected: ${selectedCards.length}`);
               if (selectedCards.length === 2) {
-                // Immediately try to play if two cards are now selected
-                tryPlayPlayer1SelectedCards();
+                // If two cards are now selected, attempt to play them as a pair.
+                console.log("Two cards selected, Player 1 attempting to play them as a pair.");
+                if (typeof window.tryPlayPlayer1SelectedCards === 'function') {
+                  window.tryPlayPlayer1SelectedCards();
+                } else if (typeof tryPlayPlayer1SelectedCards === 'function') {
+                  tryPlayPlayer1SelectedCards();
+                } else {
+                  console.error("tryPlayPlayer1SelectedCards function is not accessible for two-card play.");
+                  updateGameMessage("Error: Play function not found for two cards.");
+                }
               }
+              // If only one card is selected now, user needs to click it again to play it,
+              // or select a second card.
             } else {
-              // 2 cards already selected, clicking a 3rd does nothing for now as per earlier decision.
-              // OR: clear existing, select this one.
-              // For now: do nothing if 2 selected and a 3rd is clicked.
-              // User must deselect one first.
-              updateGameMessage("You have 2 cards selected. Deselect one or play them.");
+              // Two cards are already selected, and the user clicked a third, unselected card.
+              updateGameMessage("You already have 2 cards selected. Deselect one, or click a selected card again to play it solo.");
+              console.log("Player 1 tried to select a third card while two were already selected.");
             }
           }
-          // Note: Re-rendering the hand here could be an alternative to manually toggling class,
-          // but direct class manipulation is fine for this.
+          // No explicit re-render of hand here, as selection class is toggled,
+          // and playCard (if called) will re-render.
         });
         handElement.appendChild(cardDiv);
       });
@@ -854,4 +881,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
   // Future game logic will go here (like event handlers)
+
+  // Expose to window for testing
+  window.gameState = gameState;
+  window.tryPlayPlayer1SelectedCards = tryPlayPlayer1SelectedCards;
+  window.initGame = initGame; // Expose initGame
 });
