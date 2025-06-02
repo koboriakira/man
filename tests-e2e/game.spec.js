@@ -128,7 +128,16 @@ test.describe('Card Game E2E Tests', () => {
     // Retrieve and log debug information from script.js
     const debugInfo = await page.evaluate(() => {
       return {
-        // New variables
+        scriptLoadedAndExecuted: window.debug_scriptLoadedAndExecuted,
+        domContentLoadedFired: window.debug_domContentLoadedFired,
+        drawButtonFound: window.debug_drawButtonFound,
+
+        // initGame, updateScores, checkWin related (newly added to collection)
+        initGame_called_timestamp: window.debug_initGame_called_timestamp,
+        initGame_call_count: window.debug_initGame_call_count,
+        updateScores_called_initGame: window.debug_updateScores_called_initGame,
+        checkWin_returned_true_for_player: window.debug_checkWin_returned_true_for_player,
+
         eventListenerFired: window.debug_eventListenerFired,
         currentPlayerIndexInListener: window.debug_currentPlayerIndexInListener,
         drawCardCalled: window.debug_drawCardCalled,
@@ -137,12 +146,29 @@ test.describe('Card Game E2E Tests', () => {
         deckLengthBeforePop: window.debug_deckLengthBeforePop,
         handLengthBeforePush: window.debug_handLengthBeforePush,
         isHandArrayBeforePush: window.debug_isHandArrayBeforePush,
-        drawnCard: window.debug_drawnCard, // This is already stringified JSON or undefined
+        drawnCard: window.debug_drawnCard,
         deckLengthAfterPop: window.debug_deckLengthAfterPop,
-        handLengthAfterPush: window.debug_handLengthAfterPush
+        handLengthAfterPush: window.debug_handLengthAfterPush, // Expected to be 4
+
+        // Inside drawCard - after core logic, before endTurn
+        handLength_after_renderPlayerHand: window.debug_handLength_after_renderPlayerHand,
+        handLength_after_updateGameMessage: window.debug_handLength_after_updateGameMessage,
+        handLength_after_checkNormanPeriodEnd: window.debug_handLength_after_checkNormanPeriodEnd,
+        player1HandLength_after_endTurn_call_in_drawCard: window.debug_player1HandLength_after_endTurn_call_in_drawCard,
+
+        // Inside endTurn
+        player1HandLength_at_endTurn_start: window.debug_player1HandLength_at_endTurn_start,
+
+        // Inside startTurn (for the next player)
+        player1HandLength_at_startTurn_start: window.debug_player1HandLength_at_startTurn_start,
+        currentPlayerIndex_at_startTurn_start: window.debug_currentPlayerIndex_at_startTurn_start,
+
+        // Inside cpuTakeTurn (for the next player, if CPU)
+        player1HandLength_at_cpuTurn_start: window.debug_player1HandLength_at_cpuTurn_start,
+        cpuPlayerIndex_at_cpuTurn_start: window.debug_cpuPlayerIndex_at_cpuTurn_start
       };
     });
-    console.log('Debug Info from drawCard:', JSON.stringify(debugInfo, null, 2));
+    console.log('Debug Info from drawCard sequence:', JSON.stringify(debugInfo, null, 2));
 
     // Temporarily commented out for debugging:
     // // 4.a Verify window.gameState.players[0].hand.length directly
