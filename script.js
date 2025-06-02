@@ -314,8 +314,34 @@ document.addEventListener('DOMContentLoaded', () => {
     if (pIdx === 0) clearPlayer1Selection();
     renderPlayerHand(pIdx); renderPile();
     updateGameMessage(`P${player.id} played ${card.suit}${getRankDisplay(card.rank)}. Hand: ${player.hand.length}.`);
-    if (checkWin(pIdx)) { updateGameMessage(`P${player.id} MANNED!`); updateScores(pIdx); return; }
-    checkNormanPeriodEnd(); endTurn();
+
+    // Existing checkWin call for the player who played the card
+    if (checkWin(pIdx)) { 
+        updateGameMessage(`P${player.id} MANNED!`); 
+        updateScores(pIdx); 
+        return; 
+    }
+
+    // *** NEW LOGIC START ***
+    // Iterate through other players to check for the new "Man" condition
+    const topPileCardForManCheck = window.gameState.pile[window.gameState.pile.length - 1]; // Get the card that was just played
+    for (let otherPlayerIndex = 0; otherPlayerIndex < window.gameState.players.length; otherPlayerIndex++) {
+        if (otherPlayerIndex === pIdx) {
+            continue; // Skip the player who just played
+        }
+        // const otherPlayer = window.gameState.players[otherPlayerIndex]; // This line is implicitly handled by manDeclarer if needed.
+
+        if (checkManConditions(otherPlayerIndex, topPileCardForManCheck)) {
+            const manDeclarer = window.gameState.players[otherPlayerIndex]; 
+            updateGameMessage(`Player ${manDeclarer.id} declares MAN! Round over.`);
+            updateScores(otherPlayerIndex);
+            return; // Crucial: end the turn here, new round starts via updateScores
+        }
+    }
+    // *** NEW LOGIC END ***
+
+    checkNormanPeriodEnd(); 
+    endTurn();
   }
 
   function drawCard(playerIndex) {
@@ -413,6 +439,59 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     return false;
   }
+
+function canMakeTargetWithTwoCards(card1Rank, card2Rank, targetRank) {
+    // Addition
+    if (card1Rank + card2Rank === targetRank) return true;
+
+    // Subtraction
+    if (card1Rank - card2Rank === targetRank) return true;
+    if (card2Rank - card1Rank === targetRank) return true;
+
+    // Multiplication
+    if (card1Rank * card2Rank === targetRank) return true;
+
+    // Division
+    if (card2Rank !== 0 && card1Rank % card2Rank === 0 && card1Rank / card2Rank === targetRank) return true;
+    if (card1Rank !== 0 && card2Rank % card1Rank === 0 && card2Rank / card1Rank === targetRank) return true;
+
+    return false;
+}
+
+  function checkManConditions(playerIndex, topPileCard) {
+    const player = window.gameState.players[playerIndex];
+    if (!player) {
+        console.error(`Player not found for index: ${playerIndex} in checkManConditions`);
+        return false;
+    }
+
+    if (window.gameState.isNormanPeriod) {
+        return false; // Cannot declare "Man" during Norman period
+    }
+
+    const hand = player.hand;
+    if (!hand || hand.length === 0) {
+        return false; // No cards in hand
+    }
+
+    const handSum = hand.reduce((sum, card) => sum + card.rank, 0);
+
+    if (handSum > 13) {
+        return false; // Hand sum exceeds 13
+    }
+
+    const topCardRank = topPileCard.rank;
+
+    if (hand.length === 1) {
+        return hand[0].rank === topCardRank;
+    } else if (hand.length === 2) {
+        return canMakeTargetWithTwoCards(hand[0].rank, hand[1].rank, topCardRank);
+    } else if (hand.length >= 3) {
+        return handSum === topCardRank;
+    }
+
+    return false; // Default if no conditions met
+}
 
   function checkStalemate() {
     if (window.gameState.consecutivePasses >= window.gameState.players.length) {

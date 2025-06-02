@@ -213,4 +213,157 @@ test.describe('Card Game E2E Tests', () => {
     // await expect(page.locator('#player-1-hand')).not.toHaveClass(/current-player-hand/);
     // await expect(page.locator('#player-2-hand')).toHaveClass(/current-player-hand/);
   });
+
+  // --- "Man" Declaration Tests ---
+
+  test('Player 2 should declare MAN when Player 1 plays a card matching Player 2s single card rank', async ({ page }) => {
+    const gameMessage = page.locator('#game-message');
+    const player2Score = () => page.evaluate(() => window.gameState.players[1].score);
+
+    await page.evaluate(() => {
+      window.gameState.isNormanPeriod = false;
+      window.gameState.players[0].hand = [{ suit: '♠', rank: 7 }, { suit: '♦', rank: 2 }]; // P1 hand
+      window.gameState.players[1].hand = [{ suit: '♥', rank: 7 }]; // P2 hand (Man target)
+      window.gameState.pile = [{ suit: '♣', rank: 10 }]; // Initial pile
+      window.gameState.currentPlayerIndex = 0; // P1's turn
+      window.gameState.players[1].score = 0; // Reset P2 score
+
+      // Simulate previous player score for updateScores logic (P4 is index 3)
+      window.gameState.players[3].score = 0;
+
+
+      window.renderHands();
+      window.renderPile();
+      window.highlightCurrentPlayer();
+      window.debug_initGame_call_count = 0; // Reset for checking new round
+    });
+
+    const initialP2Score = await player2Score();
+    expect(initialP2Score).toBe(0);
+
+    // Player 1 plays the '♠7' (index 0 of their hand)
+    await page.evaluate(() => {
+      window.playCard(0, 0);
+    });
+
+    await expect(gameMessage).toHaveText(/Player 2 declares MAN! Round over\./, { timeout: 2000 });
+    
+    await expect.poll(player2Score, { timeout: 2000 }).toBe(initialP2Score + 1);
+
+    // Check if initGame was called by updateScores (signifying a new round)
+    const initGameCalls = await page.evaluate(() => window.debug_initGame_call_count);
+    expect(initGameCalls).toBeGreaterThan(0);
+  });
+
+  test('Player 2 should declare MAN with 2 cards (addition) when Player 1 plays a card', async ({ page }) => {
+    const gameMessage = page.locator('#game-message');
+    const player2Score = () => page.evaluate(() => window.gameState.players[1].score);
+
+    await page.evaluate(() => {
+      window.gameState.isNormanPeriod = false;
+      window.gameState.players[0].hand = [{ suit: '♠', rank: 7 }, { suit: '♦', rank: 2 }]; // P1 hand, will play rank 7
+      window.gameState.players[1].hand = [{ suit: '♥', rank: 3 }, { suit: '♣', rank: 4 }]; // P2 hand (3+4=7)
+      window.gameState.pile = [{ suit: '♣', rank: 10 }]; // Initial pile
+      window.gameState.currentPlayerIndex = 0; // P1's turn
+      window.gameState.players[1].score = 0; // Reset P2 score
+      window.gameState.players[3].score = 0; // Reset P4 score (previous to P1 for score logic)
+
+
+      window.renderHands();
+      window.renderPile();
+      window.highlightCurrentPlayer();
+      window.debug_initGame_call_count = 0;
+    });
+
+    const initialP2Score = await player2Score();
+
+    // Player 1 plays the '♠7'
+    await page.evaluate(() => {
+      window.playCard(0, 0); // P1 plays their first card (rank 7)
+    });
+
+    await expect(gameMessage).toHaveText(/Player 2 declares MAN! Round over\./, { timeout: 2000 });
+    await expect.poll(player2Score, { timeout: 2000 }).toBe(initialP2Score + 1);
+    const initGameCalls = await page.evaluate(() => window.debug_initGame_call_count);
+    expect(initGameCalls).toBeGreaterThan(0);
+  });
+
+  test('Player 2 should declare MAN with 3 cards (sum) when Player 1 plays a card', async ({ page }) => {
+    const gameMessage = page.locator('#game-message');
+    const player2Score = () => page.evaluate(() => window.gameState.players[1].score);
+
+    await page.evaluate(() => {
+      window.gameState.isNormanPeriod = false;
+      window.gameState.players[0].hand = [{ suit: '♠', rank: 7 }, { suit: '♦', rank: 2 }]; // P1 hand, will play rank 7
+      window.gameState.players[1].hand = [{ suit: '♥', rank: 1 }, { suit: '♣', rank: 2 }, { suit: '♦', rank: 4 }]; // P2 hand (1+2+4=7)
+      window.gameState.pile = [{ suit: '♣', rank: 10 }]; // Initial pile
+      window.gameState.currentPlayerIndex = 0; // P1's turn
+      window.gameState.players[1].score = 0;
+      window.gameState.players[3].score = 0;
+
+      window.renderHands();
+      window.renderPile();
+      window.highlightCurrentPlayer();
+      window.debug_initGame_call_count = 0;
+    });
+
+    const initialP2Score = await player2Score();
+
+    // Player 1 plays the '♠7'
+    await page.evaluate(() => {
+      window.playCard(0, 0); // P1 plays their first card (rank 7)
+    });
+
+    await expect(gameMessage).toHaveText(/Player 2 declares MAN! Round over\./, { timeout: 2000 });
+    await expect.poll(player2Score, { timeout: 2000 }).toBe(initialP2Score + 1);
+    const initGameCalls = await page.evaluate(() => window.debug_initGame_call_count);
+    expect(initGameCalls).toBeGreaterThan(0);
+  });
+
+  test('Player 2 should NOT declare MAN if Norman Period is active', async ({ page }) => {
+    const gameMessage = page.locator('#game-message');
+    const player2Score = () => page.evaluate(() => window.gameState.players[1].score);
+
+    await page.evaluate(() => {
+      window.gameState.isNormanPeriod = true; // NORMAN PERIOD IS ACTIVE
+      window.gameState.players[0].hand = [{ suit: '♠', rank: 7 }, { suit: '♦', rank: 2 }]; // P1 hand
+      window.gameState.players[1].hand = [{ suit: '♥', rank: 7 }]; // P2 hand (Man target)
+      window.gameState.pile = [{ suit: '♣', rank: 10 }]; // Initial pile
+      window.gameState.currentPlayerIndex = 0; // P1's turn
+      window.gameState.players[1].score = 0; // Reset P2 score
+      window.gameState.players[3].score = 0;
+
+
+      window.renderHands();
+      window.renderPile();
+      window.highlightCurrentPlayer();
+      window.debug_initGame_call_count = 0;
+    });
+
+    const initialP2Score = await player2Score();
+
+    // Player 1 plays the '♠7'
+    await page.evaluate(() => {
+      window.playCard(0, 0); // P1 plays their first card (rank 7)
+    });
+    
+    // Expected message for P1's play: "P1 played ♠7. Hand: 1." (or similar)
+    // It should NOT be Player 2 declares MAN.
+    await expect(gameMessage).toContainText(/P1 played ♠7\. Hand: 1\./, { timeout: 2000 });
+    await expect(gameMessage).not.toContainText(/Player 2 declares MAN!/, { timeout: 2000 });
+
+    // Player 2's score should not change
+    expect(await player2Score()).toBe(initialP2Score);
+
+    // initGame should NOT have been called because no Man declaration
+    const initGameCalls = await page.evaluate(() => window.debug_initGame_call_count);
+    expect(initGameCalls).toBe(0);
+
+    // Turn should advance. After P1 plays, it would be P2's turn (CPU).
+    // We expect the game message to reflect this after a short delay for CPU.
+    // This check is a bit more complex as it involves CPU turn.
+    // For now, ensuring no MAN and score unchanged is the primary goal.
+    // A simple check is that it's no longer P1's turn.
+    await expect.poll(async () => await page.evaluate(() => window.gameState.currentPlayerIndex !== 0), { timeout: 3000 }).toBe(true);
+  });
 });
